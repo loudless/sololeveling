@@ -6,6 +6,26 @@ import "./app.css";
 const STORAGE_KEY = "sl-tracker";
 const getToday = () => new Date().toISOString().slice(0, 10);
 
+function calcStreak(history) {
+  const days = Object.keys(history)
+    .filter((d) => history[d]?._completed)
+    .sort()
+    .reverse();
+  if (!days.length) return 0;
+  const today = getToday();
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (days[0] !== today && days[0] !== yesterday) return 0;
+  let streak = 1;
+  for (let i = 1; i < days.length; i++) {
+    const prev = new Date(days[i - 1] + "T00:00:00");
+    const curr = new Date(days[i] + "T00:00:00");
+    const diff = (prev - curr) / 86400000;
+    if (diff === 1) streak++;
+    else break;
+  }
+  return streak;
+}
+
 function haptic(type) {
   try {
     const hf = window.Telegram?.WebApp?.HapticFeedback;
@@ -34,13 +54,14 @@ export default function App() {
         const raw = await cloud.get(STORAGE_KEY);
         if (raw) {
           const state = JSON.parse(raw);
+          const hist = state.history || {};
           setCurrentRankIdx(state.currentRankIdx || 0);
-          setStreak(state.streak || 0);
+          setStreak(calcStreak(hist));
           setTotalDays(state.totalDays || 0);
-          setHistory(state.history || {});
+          setHistory(hist);
           const today = getToday();
-          if (state.history?.[today]) {
-            setTodayProgress(state.history[today]);
+          if (hist[today]) {
+            setTodayProgress(hist[today]);
           }
         }
       } catch (e) {
@@ -53,10 +74,9 @@ export default function App() {
   const save = useCallback(async (progress, rankIdx, stk, total, hist) => {
     const today = getToday();
     const updated = { ...hist, [today]: progress };
-    // Keep last 90 days to fit CloudStorage 4KB limit
     const keys = Object.keys(updated).sort();
-    if (keys.length > 90) {
-      keys.slice(0, keys.length - 90).forEach((k) => delete updated[k]);
+    if (keys.length > 60) {
+      keys.slice(0, keys.length - 60).forEach((k) => delete updated[k]);
     }
     try {
       await cloud.set(STORAGE_KEY, JSON.stringify({
@@ -89,7 +109,7 @@ export default function App() {
     if (allDone && !wasCompleteToday) {
       newProgress._completed = true;
       const newTotal = totalDays + 1;
-      const newStreak = streak + 1;
+      const newStreak = calcStreak(newHistory);
       setTotalDays(newTotal);
       setStreak(newStreak);
       setShowComplete(true);

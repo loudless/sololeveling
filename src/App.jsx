@@ -73,17 +73,22 @@ export default function App() {
 
   const save = useCallback(async (progress, rankIdx, stk, total, hist) => {
     const today = getToday();
-    const updated = { ...hist, [today]: progress };
-    const keys = Object.keys(updated).sort();
+    const compact = {};
+    for (const [day, val] of Object.entries(hist)) {
+      if (day === today) continue;
+      if (val?._completed) compact[day] = { _completed: true };
+    }
+    compact[today] = progress;
+    const keys = Object.keys(compact).sort();
     if (keys.length > 60) {
-      keys.slice(0, keys.length - 60).forEach((k) => delete updated[k]);
+      keys.slice(0, keys.length - 60).forEach((k) => delete compact[k]);
     }
     try {
       await cloud.set(STORAGE_KEY, JSON.stringify({
         currentRankIdx: rankIdx,
         streak: stk,
         totalDays: total,
-        history: updated,
+        history: compact,
       }));
     } catch (e) {
       console.error("Save failed:", e);
